@@ -1,0 +1,83 @@
+/* contact.css */
+
+
+/* Background image */
+
+.contact-bg {
+    background-image: url('../images/almond.jpeg');
+    background-size: cover;
+    background-position: center;
+    color: #fff;
+    /* Text color for better contrast on background image */
+}
+
+
+/* Center content vertically */
+
+.contact-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+
+/* Form container */
+
+#contact-form {
+    background-color: rgba(255, 255, 255, 0.9);
+    /* Slightly transparent white background */
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+}
+
+
+/* Form labels */
+
+.form-label {
+    font-weight: bold;
+    color: #0057da;
+    /* Set label color to black */
+}
+
+
+/* Form inputs and textarea */
+
+.form-control {
+    border: 1px solid #dacece;
+    border-radius: 5px;
+    height: 40px;
+}
+
+
+/* Submit button */
+
+.submit-btn {
+    margin-top: 20px;
+}
+
+
+/* Status message */
+
+.status {
+    margin-top: 10px;
+    text-align: center;
+}
+
+
+/* Add this to your existing CSS stylesheet */
+
+.custom-heading {
+    font-size: 24px;
+    /* Adjust the font size as needed */
+    color: #333;
+    /* Set the text color to a dark gray */
+    text-transform: uppercase;
+    /* Uppercase the text */
+    text-align: center;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+    color: red
+    /* Adjust letter spacing as needed */
+}
