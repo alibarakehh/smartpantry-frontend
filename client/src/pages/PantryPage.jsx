@@ -9,6 +9,7 @@ const PantryPage = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [detectedProductId, setDetectedProductId] = useState(null);
 
   // Image upload & capture states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -20,6 +21,59 @@ const PantryPage = () => {
   const [detectedName, setDetectedName] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [expiryDate, setExpiryDate] = useState("");
+
+  // --- RECOMMENDED RECIPES HOOKS ---
+const [recommendedRecipes, setRecommendedRecipes] = useState([]);
+const [loadingRecipes, setLoadingRecipes] = useState(false);
+const [selectedRecipe, setSelectedRecipe] = useState(null);
+const [showRecipeModal, setShowRecipeModal] = useState(false);
+
+const [openRecipeId, setOpenRecipeId] = useState(null);
+
+
+
+const handleRecipeClick = async (recipe) => {
+  try {
+    // Fetch full recipe details from your backend
+    const res = await axios.get(`${API_BASE}/Recipes/${recipe.recipeId}`);
+    setSelectedRecipe(res.data);
+    setShowRecipeModal(true);
+  } catch {
+    setSelectedRecipe(null);
+    setShowRecipeModal(false);
+  }
+};
+
+
+
+const fetchRecommendedRecipes = useCallback(async () => {
+  setLoadingRecipes(true);
+  try {
+    const res = await axios.get(`${API_BASE}/RecommendedRecipes`);
+    let data = res.data;
+    if (!Array.isArray(data) && data?.$values) data = data.$values;
+    // Deduplicate by recipeId
+    // Deduplicate by name and servings
+const seen = new Set();
+const unique = (Array.isArray(data) ? data : []).filter((r) => {
+  const key = (r.name || '').toLowerCase() + '-' + (r.servings || '');
+  if (seen.has(key)) return false;
+  seen.add(key);
+  return true;
+});
+setRecommendedRecipes(unique);
+
+  } catch (err) {
+    setRecommendedRecipes([]);
+  }
+  setLoadingRecipes(false);
+}, [API_BASE]);
+
+
+useEffect(() => {
+  fetchRecommendedRecipes();
+}, [fetchRecommendedRecipes, products]); // re-fetch when pantry changes
+
 
   // Filter expiry (all, soon, expired)
   const [filterExpiry, setFilterExpiry] = useState("all");
@@ -59,14 +113,15 @@ const PantryPage = () => {
 
   // Open dialog to add product
   const openDialog = () => {
-    setIsDialogOpen(true);
-    setUseWebcam(false);
-    setImageSrc(null);
-    setDetectedName("");
-    setQuantity(1);
-    setExpiryDate("");
-    setError(null);
-  };
+  setIsDialogOpen(true);
+  setUseWebcam(false);
+  setImageSrc(null);
+  setDetectedName("");
+  setQuantity(1);
+  setExpiryDate(new Date().toISOString().split("T")[0]); // Pre-fill with today in "YYYY-MM-DD" format
+  setError(null);
+};
+
 
   // Close dialog & reset
   const closeDialog = () => {
@@ -78,13 +133,48 @@ const PantryPage = () => {
     setError(null);
   };
 
+  // Convert dataURL to Blob
+  const dataURLtoBlob = (dataurl) => {
+    const arr = dataurl.split(",");
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    return new Blob([u8arr], { type: mime });
+  };
+
+  // Detect product and save detected name
+  const detectProductAndSaveName = async (file) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+
+      // Call your backend DetectProduct endpoint
+      const response = await axios.post(`${API_BASE}/DetectProduct`, formData, {
+  headers: { "Content-Type": "multipart/form-data" },
+});
+
+      const data = response.data;
+      setDetectedName(data.label || "");
+      setLoading(false);
+      setDetectedProductId(data.productId || null); // <-- Add this
+    } catch (error) {
+      setError("Failed to detect product.");
+      setLoading(false);
+    }
+  };
+
   // Handle file input change (upload)
   const onFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setImageSrc(url);
-      simulateDetection();
+      detectProductAndSaveName(file);
     }
   };
 
@@ -94,67 +184,80 @@ const PantryPage = () => {
     const image = webcamRef.current.getScreenshot();
     if (image) {
       setImageSrc(image);
-      simulateDetection();
+      const file = new File([dataURLtoBlob(image)], "capture.jpg", { type: "image/jpeg" });
+      detectProductAndSaveName(file);
     }
   };
 
-  // Mock ML detection - replace with real ML call later
-  const simulateDetection = () => {
-    setDetectedName("");
-    setLoading(true);
-    setTimeout(() => {
-      setDetectedName("Milk");
-      setLoading(false);
-    }, 1500);
+  
+
+  
+// const saveProduct = async () => {
+//   if (!detectedName || !detectedProductId) {
+//     setError("No detected product to save.");
+//     return;
+//   }
+//   setLoading(true);
+//   setError(null);
+
+//   try {
+//     const availableProduct = {
+//       productId: detectedProductId,
+//       quantity: quantity,
+//       purchasingTime: new Date().toISOString(),
+//       expiryDate: expiryDate ? expiryDate : null,
+//       originalUnit: null
+//     };
+//     console.log("Saving available product with productId:", detectedProductId);
+
+//     await axios.post(`${API_BASE}/AvailableProducts`, availableProduct);
+
+//     setLoading(false);
+//     closeDialog();
+//     fetchPantry();
+//   } catch (error) {
+//     setError("Failed to save product.");
+//     setLoading(false);
+//   }
+// };
+const saveProduct = async () => {
+  if (!detectedName || !detectedProductId) {
+    setError("No detected product to save.");
+    return;
+  }
+  setLoading(true);
+  setError(null);
+
+  const availableProduct = {
+    productId: detectedProductId,
+    quantity: quantity,
+    purchasingTime: new Date().toISOString(),
+    expiryDate: expiryDate ? expiryDate : null,
+    originalUnit: null
   };
+  console.log("Sending availableProduct:", availableProduct);
 
-  // Save detected product
-  const saveProduct = async () => {
-    if (!detectedName) return;
-    setLoading(true);
-    setError(null);
-    try {
-      // Create product or get existing
-      let productId;
-      try {
-        const res = await axios.post(`${API_BASE}/Products`, {
-          name: detectedName,
-        });
-        productId = res.data.productId;
-      } catch (e) {
-        if (e.response?.status === 409) {
-          const all = await axios.get(`${API_BASE}/Products`);
-          const existing = all.data.find(
-            (p) => p.name.toLowerCase() === detectedName.toLowerCase()
-          );
-          productId = existing?.productId;
-        } else {
-          throw e;
-        }
-      }
-
-      // Add AvailableProduct
-      await axios.post(`${API_BASE}/AvailableProducts`, {
-        productId,
-        quantity,
-        expiryDate: expiryDate || null,
-      });
-
-      closeDialog();
-      fetchPantry();
-    } catch (e) {
-      setError("Failed to save product.");
-    }
+  try {
+    await axios.post(`${API_BASE}/AvailableProducts`, availableProduct);
     setLoading(false);
-  };
+    closeDialog();
+    fetchPantry();
+  } catch (error) {
+    setError("Failed to save product.");
+    setLoading(false);
+  }
+};
 
-  // Filter products by expiry
+
+  // Filter products by expiry status
   const filteredProducts = products.filter((p) => {
     if (filterExpiry === "all") return true;
     if (filterExpiry === "soon") return isExpiringSoon(p.expiryDate);
     if (filterExpiry === "expired") return isExpired(p.expiryDate);
     return true;
   });
+
+  
 
   return (
     <div className="pantry-container">
@@ -176,6 +279,72 @@ const PantryPage = () => {
           <option value="expired">Expired</option>
         </select>
       </div>
+
+      <div className="recommended-recipes-card">
+  <h2 className="rec-title">
+    <span role="img" aria-label="chef">👩‍🍳</span> Recommended Recipes
+  </h2>
+  {loadingRecipes ? (
+    <div className="rec-loading">
+      <div className="rec-spinner" />
+      <span>Looking for recipes…</span>
+    </div>
+  ) : recommendedRecipes.length === 0 ? (
+    <div className="rec-empty">
+      <span role="img" aria-label="no recipe">🥲</span>
+      <span>No recipes can be made with your current pantry items.</span>
+    </div>
+  ) : (
+    <ul className="rec-list">
+  {recommendedRecipes.map((recipe) => (
+    <li className="rec-item"
+        key={recipe.recipeId}
+        tabIndex={0}
+        onClick={() => handleRecipeClick(recipe)}
+        style={{cursor: "pointer"}}
+        role="button"
+        aria-pressed="false"
+    >
+      <div className="rec-item-header">
+        <span className="rec-name">{recipe.name}</span>
+        <span className="rec-servings">{recipe.servings ? `Serves: ${recipe.servings}` : ""}</span>
+      </div>
+      {/* No ingredients here! */}
+    </li>
+  ))}
+</ul>
+
+  )}
+
+  {/* --- Recipe Details Modal --- */}
+  {showRecipeModal && selectedRecipe && (
+    <div className="recipe-modal-backdrop" onClick={() => setShowRecipeModal(false)}>
+      <div className="recipe-modal" onClick={e => e.stopPropagation()}>
+        <button className="close-btn" onClick={() => setShowRecipeModal(false)}>×</button>
+        <h2>{selectedRecipe.name}</h2>
+        <p className="desc">{selectedRecipe.description}</p>
+        <div className="modal-meta">
+          <span><b>Cooking time:</b> {selectedRecipe.cookingTime} min</span>
+          <span><b>Servings:</b> {selectedRecipe.servings}</span>
+          <span><b>Origin:</b> {selectedRecipe.origin}</span>
+        </div>
+        <div className="ingredients-list">
+          <h3>Ingredients</h3>
+          <ul>
+            {(selectedRecipe.productRecipes?.$values || selectedRecipe.productRecipes || []).map((pr, i) =>
+              pr && pr.product ? (
+                <li key={i}>
+                  {pr.product.name}: {pr.quantityRequired} {pr.originalUnit || ""}
+                </li>
+              ) : null
+            )}
+          </ul>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+
 
       <table className="pantry-table" aria-label="Available products">
         <thead>
